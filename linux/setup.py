@@ -15,6 +15,7 @@ import pandas as pd
 from dclass import respath, remoteread_file, pprint, Db
 from time import sleep
 import webbrowser
+import sys
 
 
 savefilename = 'Konga' #name of excel/html sheet you want to save with with no extension
@@ -26,7 +27,7 @@ class Konga:
         self.limit = 0
         self.url = 'https://konga.com'
         self.saveoutput = self.url.replace('https://', '').replace('.', '-') + '.xlsx'
-        self.browserdriver = respath('driver/chromedriver.exe')
+        self.browserdriver = respath('chromedriver')
         self.category = []
         self.pages = []
         self.extractingdetails = 0
@@ -35,7 +36,7 @@ class Konga:
         self.createDB()
 
     def createDB(self):
-           
+            #db = Db(respath(self.dbname))
             create_dcategory_table = """ CREATE TABLE IF NOT EXISTS dcategory (
                         id integer PRIMARY KEY,
                         url MEDIUMTEXT NOT NULL,
@@ -69,11 +70,10 @@ class Konga:
             self.db.createdb(create_dpages_table)
             self.db.createdb(create_ddata_table)
             
-    
-    def dosubProcess(self):
-        checkdb2 = self.db.check('id', 'dcategory', f"id!='0' ")
+    def run(self):
+        checkdb2 = self.db.check('id', 'dcategory', f"id!='' ")
         if checkdb2:
-            step = int(input("You have some unfinished processing. Select options to continue\n\n1. Continue Extract pages and Extract Details\n2. Export saved Details only\n3. Export saved Details and continue extracting\n4. Start new session : "))
+            step = int(input("You have some unfinished processing. Select options to continue\n\n1. Continue Extract pages and Extract Details\n2. Export saved Details only\n3. Export saved Details and continue extracting\n4. Start new session\n5. Clear all session and exits : "))
             if step ==1:
                 self.extractPages()
             elif step ==2:
@@ -82,57 +82,69 @@ class Konga:
                 self.extractPages()
                 self.saveData()
             elif step ==4:
-                self.db.check(f"DELETE FROM dcategory")
-                self.db.check(f"DELETE FROM dpages")
-                self.db.check(f"DELETE FROM ddata")
+                self.db.others(f"DELETE FROM dcategory")
+                self.db.others(f"DELETE FROM dpages")
+                self.db.others(f"DELETE FROM ddata")
                 self.dosubProcess()
+            elif step ==5:
+                self.db.others(f"DELETE FROM dcategory")
+                self.db.others(f"DELETE FROM dpages")
+                self.db.others(f"DELETE FROM ddata")
+                sys.exit()
             else:
                 print("Sorry no option was select try again")
-                self.dosubProcess()
+                self.run()
         else:
-            try:
-                options = Options()
-                options.add_argument('--ignore-certificate-errors')
-                options.add_argument("--test-type")
-                options.add_argument("--headless")
-                browser = webdriver.Chrome(self.browserdriver, options=options)
-                #try parsing with selenium
-                browser.get(self.url)
-                #wait for the browser page to load
-                waitToLoad = WebDriverWait(browser, 5)
-                #wait until the target class is loaded and found
-                waitToLoad.until(EC.presence_of_element_located((By.ID, 'mainContent')))
-                #if successfully loaded store it to pagecontents variable
-                allcategories_link = browser.find_element_by_id("mainContent")
-                dcontent = allcategories_link.get_attribute("outerHTML")
-                print("Connecting to "+ str(savefilename))
-            except:
-                #try process with get
-                dcontent = remoteread_file(self.url)
-            finally:
-                browser.quit()
-            
-            try:
-                content = bs(dcontent, 'html.parser')
-                
-                for totalfound_href in content.find_all('a'):
-                    foundurl = totalfound_href["href"]
-                    
-                    if "category" in foundurl:
-                        if not foundurl.startswith('http') or not foundurl.startswith('https'):
-                            foundurl = self.url+'/'+ foundurl.lstrip('/')
-                        
-                        checkdb = self.db.check('id', 'dcategory', f"url='{foundurl}' ")
-                        if checkdb is None:
-                            print("Category saved ", foundurl)
-                            self.db.insert('dcategory', 'url, status', f"'{foundurl}', '0' ")
-                            
-                print("Categories saved successfully")
-                
-            except Exception as e:
-                print('sub category error: '+ str(e))
+            step2 = input("Welcome to Konga scrapper enjoy\n\nDo you want to start scrapping now? (y/n):  ").lower()
+            if step2 == 'y':
+                self.dosubProcess()
+            else:
+                sys.exit()
+    
+    def dosubProcess(self):
+        print("Connecting to "+ str(savefilename))
         
-            self.extractPages()
+        try:
+            options = Options()
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument("--test-type")
+            options.add_argument("--headless")
+            browser = webdriver.Chrome(executable_path=self.browserdriver, options=options)
+            #try parsing with selenium
+            browser.get(self.url)
+            #wait for the browser page to load
+            waitToLoad = WebDriverWait(browser, 5)
+            #wait until the target class is loaded and found
+            waitToLoad.until(EC.presence_of_element_located((By.ID, 'mainContent')))
+            #if successfully loaded store it to pagecontents variable
+            allcategories_link = browser.find_element_by_id("mainContent")
+            dcontent = allcategories_link.get_attribute("outerHTML")
+            browser.quit()
+        except:
+            #try process with get
+            dcontent = remoteread_file(self.url)
+        
+        try:
+            content = bs(dcontent, 'html.parser')
+            
+            for totalfound_href in content.find_all('a'):
+                foundurl = totalfound_href["href"]
+                
+                if "category" in foundurl:
+                    if not foundurl.startswith('http') or not foundurl.startswith('https'):
+                        foundurl = self.url+'/'+ foundurl.lstrip('/')
+                    
+                    checkdb = self.db.check('id', 'dcategory', f"url='{foundurl}' ")
+                    if checkdb is None:
+                        print("Category saved ", foundurl)
+                        self.db.insert('dcategory', 'url, status', f"'{foundurl}', '0' ")
+                        
+            print("Categories saved successfully")
+            
+        except Exception as e:
+            print('sub category error: '+ str(e))
+    
+        self.extractPages()
     
     def extractPages(self):
         print("Extracting pages... Please wait...")
@@ -152,13 +164,14 @@ class Konga:
                 page = ''
                 for pag in getPages:
                     page = pag['url']
+                    print("Processing page", page)
+                    options = Options()
+                    options.add_argument('--ignore-certificate-errors')
+                    options.add_argument("--test-type")
+                    options.add_argument("--headless")
+                    
+                    browser = webdriver.Chrome(executable_path=self.browserdriver, options=options)
                     try:
-                        print("Processing page", page)
-                        options = Options()
-                        options.add_argument('--ignore-certificate-errors')
-                        options.add_argument("--test-type")
-                        options.add_argument("--headless")
-                        browser = webdriver.Chrome(self.browserdriver, options=options)
                         #try parsing with selenium
                         browser.get(page)
                         #wait for the browser page to load
@@ -168,12 +181,12 @@ class Konga:
                         #if successfully loaded store it to pagecontents variable
                         allcategories_link = browser.find_element_by_class_name('_06822_e7mpG')
                         dcontent = allcategories_link.get_attribute("outerHTML")
+                        
+                        browser.quit()
                     except:
                         #try process with get
                         dcontent = remoteread_file(page)
-                    finally:
-                        browser.quit()
-                    
+
                     try:
                         content = bs(dcontent, 'html.parser')
                         
@@ -226,14 +239,14 @@ class Konga:
                         if self.limit >= countfound:
                             self.extractingdetails = 0
                             break
-                    
+                        
+                    print("Extraction begins on page", page)
                     try:
-                        print("Extraction begins on page", page)
                         opts = Options()
                         opts.add_argument('--ignore-certificate-errors')
                         opts.add_argument("--test-type")
                         opts.add_argument("--headless")
-                        browser = webdriver.Chrome(self.browserdriver, options=opts)
+                        browser = webdriver.Chrome(executable_path=self.browserdriver, options=opts)
                         #try parsing with selenium
                         browser.get(page)
                         #wait for the browser page to load
@@ -337,12 +350,10 @@ class Konga:
                                 self.db.insert('ddata', 'dpageid,brandname,main_category, sub_categories,title,images,price,selling_price,discount,description,product_code,review, link', f"'{pag['id']}','{resultBrand}','{resultMainsubcate}','{resultAllsubcate}','{resultTitle}','{resultImage}','{resultPrice}','{resultPricediscount}','{resultPricesaved}','{resultDescription}','{resultProductCode}', '{resultReview}', '{page}' ")
                           
                         print("Finished extracting ", page)
+                        browser.quit()
                     
                     except Exception as e:
                         print('Error occurred '+ str(e))
-                    finally:
-                        browser.quit()
-                        pass    
                     
                     self.db.others(f"UPDATE dpages SET status=1 WHERE id='{pag['id']}'" )
                                          
@@ -378,7 +389,7 @@ class Konga:
             print("No data to save")
         
 if __name__ == '__main__':
-    Konga().dosubProcess()
+    Konga().run()
     
  
  
