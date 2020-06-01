@@ -41,6 +41,10 @@ class Db:
 		self.cur.execute(param)
 		self.con.commit()
 
+	def insert2(self, param, param2):
+		self.cur.execute(param, param2)
+		self.con.commit()
+
 	def getTotal(self, param):
 		totalrow = self.cur.execute(param).rowcount
 		return totalrow
@@ -66,6 +70,7 @@ def respath(filename):
 
 
 def remoteread_file(dfile, proxy=''):
+    dfile = dfile.strip()
     try:
         with requests.get(dfile, headers={'User-Agent': ua.random}, verify=False, stream=True, proxies={"http": proxy, "https": proxy}) as response:
             allowcode = [200, 202, 201, 203, 206, 302, 301, 303, 305, 307, 404]
@@ -75,5 +80,5 @@ def remoteread_file(dfile, proxy=''):
             else:
                 return response.status_code
     except Exception as e:
-        pprint('Requests '+ str(e))
+        print('Requests '+ str(e))
         return False
